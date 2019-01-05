@@ -16,6 +16,13 @@ sensitive information of any sort.
 In addition, a simple chat server with NCurses and browser based chat clients
 demonstrate how to use this API.
 
+## Dependencies
+
+This project requires:
+
+1. C++17 or newer
+2. Boost >= 1.66
+3. CMake >= 3.12
 
 ## Building with CMake
 
