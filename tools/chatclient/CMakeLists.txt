@@ -17,7 +17,6 @@ find_package(Threads REQUIRED)
 target_include_directories(chatclient
   PRIVATE
   ${CURSES_INCLUDE_DIR}
-  $<TARGET_PROPERTY:networking,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
 target_link_libraries(chatclient

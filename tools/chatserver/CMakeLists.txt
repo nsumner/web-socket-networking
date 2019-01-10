@@ -12,11 +12,6 @@ set_target_properties(chatserver
 
 find_package(Threads REQUIRED)
 
-target_include_directories(chatserver
-  PRIVATE
-  $<TARGET_PROPERTY:networking,INTERFACE_INCLUDE_DIRECTORIES>
-)
-
 target_link_libraries(chatserver
   networking
   ${CMAKE_THREAD_LIBS_INIT}
