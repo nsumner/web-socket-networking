@@ -246,12 +246,16 @@ HTTPSession::handleRequest() {
     send(badRequest("Unknown HTTP-method"));
   }
 
-  // We only support index.html and always respond the same way.
-  std::string index = "index.html"s;
-  constexpr auto npos = boost::beast::string_view::npos;
-  if (auto target = request.target();
-      target.size() <= index.size()
-      || target.compare(target.size() - index.size(), npos, index) != 0) {
+  // We only support index.html and /.
+  auto shouldServeIndex = [] (auto target) {
+    std::string const index = "/index.html"s;
+    constexpr auto npos = boost::beast::string_view::npos;
+    // NOTE: in C++20, we can use `ends_with` here instead.
+    return target == "/"
+      || (index.size() <= target.size()
+        && target.compare(target.size() - index.size(), npos, index) == 0);
+  };
+  if (!shouldServeIndex(request.target())) {
     send(badRequest("Illegal request-target"));
   }
        
