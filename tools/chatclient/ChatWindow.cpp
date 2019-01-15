@@ -185,7 +185,7 @@ ChatWindowImpl::getFieldString() const {
 
 ChatWindow::ChatWindow(std::function<void(std::string)> onTextEntry,
                        int updateDelay)
-  : impl{std::make_unique<ChatWindowImpl>(onTextEntry, updateDelay)}
+  : impl{std::make_unique<ChatWindowImpl>(std::move(onTextEntry), updateDelay)}
     { }
 
 

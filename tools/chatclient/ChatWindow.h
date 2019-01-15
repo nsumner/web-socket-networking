@@ -22,7 +22,7 @@ class ChatWindowImpl;
 class ChatWindow {
 public:
   explicit ChatWindow(std::function<void(std::string)> onTextEntry)
-    : ChatWindow{onTextEntry, 1}
+    : ChatWindow{std::move(onTextEntry), 1}
       { }
 
   ChatWindow(std::function<void(std::string)> onTextEntry, int updateDelay);

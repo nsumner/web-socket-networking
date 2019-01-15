@@ -69,7 +69,6 @@ buildOutgoing(const std::string& log) {
 
 std::string
 getHTTPMessage(const char* htmlLocation) {
-  std::error_code ec;
   if (access(htmlLocation, R_OK ) != -1) {
     std::ifstream infile{htmlLocation};
     return std::string{std::istreambuf_iterator<char>(infile),
