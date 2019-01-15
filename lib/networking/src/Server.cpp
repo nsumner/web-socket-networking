@@ -12,7 +12,10 @@
 #include <boost/beast.hpp>
 
 using namespace std::string_literals;
-using namespace networking;
+using networking::Message;
+using networking::Server;
+using networking::ServerImpl;
+using networking::ServerImplDeleter;
 
 
 
@@ -35,9 +38,7 @@ public:
      endpoint{boost::asio::ip::tcp::v4(), port},
      ioService{},
      acceptor{ioService, endpoint},
-     httpMessage{httpMessage},
-     channels{},
-     incoming{} {
+     httpMessage{std::move(httpMessage)} {
     listenForConnections();
   }
 
@@ -53,6 +54,7 @@ public:
   boost::asio::io_service ioService;
   boost::asio::ip::tcp::acceptor acceptor;
   boost::beast::http::string_body::value_type httpMessage;
+
   ChannelMap channels;
   std::deque<Message> incoming;
 };
@@ -96,6 +98,8 @@ private:
 
 }
 
+using networking::Channel;
+
 
 void
 Channel::start(boost::beast::http::request<boost::beast::http::string_body>& request) {
@@ -125,7 +129,7 @@ Channel::send(std::string outgoing) {
   if (outgoing.empty()) {
     return;
   }
-  writeBuffer.push_back(outgoing);
+  writeBuffer.push_back(std::move(outgoing));
 
   auto self = shared_from_this();
   websocket.async_write(boost::asio::buffer(writeBuffer.back()),
@@ -314,12 +318,15 @@ ServerImpl::registerChannel(Channel& channel) {
 
 
 void
-ServerImpl::reportError(std::string_view message) {
+ServerImpl::reportError(std::string_view /*message*/) {
   // Swallow errors....
 }
 
 void
 ServerImplDeleter::operator()(ServerImpl* serverImpl) {
+  // NOTE: This is a custom deleter used to help hide the impl class. Thus
+  // it must use a raw delete.
+  // NOLINTNEXTLINE (cppcoreguidelines-owning-memory)
   delete serverImpl;
 }
 
@@ -368,6 +375,10 @@ std::unique_ptr<ServerImpl,ServerImplDeleter>
 Server::buildImpl(Server& server,
                   unsigned short port,
                   std::string httpMessage) {
+  // NOTE: We are using a custom deleter here so that the impl class can be
+  // hidden within the source file rather than exposed in the header. Using
+  // a custom deleter means that we need to use a raw `new` rather than using
+  // `std::make_unique`.
   auto* impl = new ServerImpl(server, port, std::move(httpMessage));
   return std::unique_ptr<ServerImpl,ServerImplDeleter>(impl);
 }

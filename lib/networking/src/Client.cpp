@@ -15,7 +15,7 @@
 #include <deque>
 #include <sstream>
 
-using namespace networking;
+using networking::Client;
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -63,7 +63,7 @@ void
 Client::ClientImpl::disconnect() {
   isClosed = true;
   websocket.async_close(boost::beast::websocket::close_code::normal,
-    [this] (auto errorCode) { 
+    [] (auto errorCode) {
       // Swallow errors while closing.
     });
 }
@@ -115,7 +115,7 @@ Client::ClientImpl::readMessage() {
 
 
 void
-Client::ClientImpl::reportError(std::string_view message) {
+Client::ClientImpl::reportError(std::string_view /*message*/) {
   // Swallow errors....
 }
 

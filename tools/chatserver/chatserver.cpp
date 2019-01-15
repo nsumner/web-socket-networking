@@ -25,14 +25,14 @@ std::vector<Connection> clients;
 
 void
 onConnect(Connection c) {
-  printf("New connection found: %lu\n", c.id);
+  std::cout << "New connection found: " << c.id << "\n";
   clients.push_back(c);
 }
 
 
 void
 onDisconnect(Connection c) {
-  printf("Connection lost: %lu\n", c.id);
+  std::cout << "Connection lost: " << c.id << "\n";
   auto eraseBegin = std::remove(std::begin(clients), std::end(clients), c);
   clients.erase(eraseBegin, std::end(clients));
 }
@@ -47,7 +47,7 @@ processMessages(Server &server,
     if (message.text == "quit") {
       server.disconnect(message.connection);
     } else if (message.text == "shutdown") {
-      printf("Shutting down.\n");
+      std::cout << "Shutting down.\n";
       quit = true;
     } else {
       result << message.connection.id << "> " << message.text << "\n";
@@ -86,8 +86,8 @@ getHTTPMessage(const char* htmlLocation) {
 int
 main(int argc, char* argv[]) {
   if (argc < 3) {
-    printf("Usage:\n%s <port> <html response>\ne.g. %s 4002 ./webchat.html\n",
-           argv[0], argv[0]);
+    std::cerr << "Usage:\n  " << argv[0] << " <port> <html response>\n"
+              << "  e.g. " << argv[0] << " 4002 ./webchat.html\n";
     return 1;
   }
 
@@ -99,7 +99,8 @@ main(int argc, char* argv[]) {
     try {
       server.update();
     } catch (std::exception& e) {
-      printf("Exception from Server update:\n%s\n\n", e.what());
+      std::cerr << "Exception from Server update:\n"
+                << " " << e.what() << "\n\n";
       done = true;
     }
 

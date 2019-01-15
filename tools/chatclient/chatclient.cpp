@@ -6,6 +6,7 @@
 /////////////////////////////////////////////////////////////////////////////
 
 
+#include <iostream>
 #include <unistd.h>
 
 #include "ChatWindow.h"
@@ -15,8 +16,8 @@
 int
 main(int argc, char* argv[]) {
   if (argc < 3) {
-    printf("Usage:\n%s <ip address> <port>\ne.g. %s localhost 4002\n",
-           argv[0], argv[0]);
+    std::cerr << "Usage: \n  " << argv[0] << " <ip address> <port>\n"
+              << "  e.g. " << argv[0] << " localhost 4002\n";
     return 1;
   }
 
