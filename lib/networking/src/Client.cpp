@@ -27,13 +27,13 @@ namespace networking {
 
 class Client::ClientImpl {
 public:
-  ClientImpl(const char* address, const char* port)
+  ClientImpl(std::string_view address, std::string_view port)
     : isClosed{false},
-      hostAddress{address},
+      hostAddress{address.data(), address.size()},
       ioService{},
       websocket{ioService} {
     boost::asio::ip::tcp::resolver resolver{ioService};
-    connect(resolver.resolve({address, port}));
+    connect(resolver.resolve(address, port));
   }
 
   void disconnect();
@@ -47,7 +47,7 @@ public:
   void reportError(std::string_view message);
 
   bool isClosed;
-  const char* hostAddress;
+  std::string hostAddress;
   boost::asio::io_service ioService;
   boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket;
   boost::beast::multi_buffer readBuffer;
@@ -84,6 +84,8 @@ Client::ClientImpl::connect(boost::asio::ip::tcp::resolver::iterator endpoint) {
 
 void
 Client::ClientImpl::handshake() {
+  // NOTE: Boost string_view and std::string_view don't play nicely. Clean
+  // this in the future.
   websocket.async_handshake(hostAddress, "/",
     [this] (auto errorCode) {
       if (!errorCode) {
@@ -125,7 +127,7 @@ Client::ClientImpl::reportError(std::string_view /*message*/) {
 /////////////////////////////////////////////////////////////////////////////
 
 
-Client::Client(const char* address, const char* port)
+Client::Client(std::string_view address, std::string_view port)
   : impl{std::make_unique<ClientImpl>(address, port)}
     { }
 
