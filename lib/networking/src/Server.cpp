@@ -218,8 +218,12 @@ HTTPSession::handleRequest() {
           session->serverImpl.reportError("Error writing to HTTP stream");
           socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send);
         } else if (sharedResponse->need_eof()) {
-          // This signifies a deliberate close.
-          socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send);
+          // This signifies a deliberate close
+          boost::system::error_code ec;
+          socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec);
+          if (ec) {
+            session->serverImpl.reportError("Error closing HTTP stream");
+          }
         } else {
           session->start();
         }
