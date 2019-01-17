@@ -12,6 +12,7 @@
 #include <iostream>
 #include <sstream>
 #include <unistd.h>
+#include <vector>
 
 
 using networking::Server;
