@@ -84,8 +84,6 @@ Client::ClientImpl::connect(boost::asio::ip::tcp::resolver::iterator endpoint) {
 
 void
 Client::ClientImpl::handshake() {
-  // NOTE: Boost string_view and std::string_view don't play nicely. Clean
-  // this in the future.
   websocket.async_handshake(hostAddress, "/",
     [this] (auto errorCode) {
       if (!errorCode) {
