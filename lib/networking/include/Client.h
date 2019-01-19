@@ -45,8 +45,7 @@ public:
   void update();
 
   /**
-   *  Send a message to the server. The message may not contain carriage
-   *  returns.
+   *  Send a message to the server.
    */
   void send(std::string message);
 

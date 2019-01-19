@@ -108,8 +108,7 @@ public:
   void update();
 
   /**
-   *  Send a list of messages to their respective Clients. The messages may not
-   *  contain carriage returns.
+   *  Send a list of messages to their respective Clients.
    */
   void send(const std::deque<Message>& messages);
 
