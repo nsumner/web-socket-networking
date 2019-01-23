@@ -55,13 +55,13 @@ public:
    *  messages were received from the Server, they are first concatenated
    *  into a single std::string.
    */
-  std::string receive();
+  [[nodiscard]] std::string receive();
 
   /**
    *  Returns true iff the client disconnected from the server after initially
    *  connecting.
    */
-  bool isDisconnected();
+  [[nodiscard]] bool isDisconnected() const noexcept;
 
 private:
   class ClientImpl;

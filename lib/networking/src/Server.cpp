@@ -80,7 +80,7 @@ public:
   void send(std::string outgoing);
   void disconnect();
 
-  Connection getConnection() const { return connection; }
+  [[nodiscard]] Connection getConnection() const noexcept { return connection; }
 
 private:
   void readMessage();
@@ -190,7 +190,7 @@ void
 HTTPSession::start() {
   boost::beast::http::async_read(socket, streamBuf, request,
     [this, session = this->shared_from_this()]
-    (std::error_code ec, std::size_t bytes) {
+    (std::error_code ec, std::size_t /*bytes*/) {
       if (ec) {
         serverImpl.reportError("Error reading from HTTP stream.");
 
@@ -213,7 +213,7 @@ HTTPSession::handleRequest() {
       std::make_shared<Response>(std::forward<decltype(response)>(response));
 
     boost::beast::http::async_write(socket, *sharedResponse,
-      [this, session, sharedResponse] (std::error_code ec, std::size_t bytes) {
+      [this, session, sharedResponse] (std::error_code ec, std::size_t /*bytes*/) {
         if (ec) {
           session->serverImpl.reportError("Error writing to HTTP stream");
           socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send);
@@ -351,8 +351,8 @@ Server::update() {
 
 std::deque<Message>
 Server::receive() {
-  auto oldIncoming = std::move(impl->incoming);
-  impl->incoming = std::deque<Message>{};
+  std::deque<Message> oldIncoming;
+  std::swap(oldIncoming, impl->incoming);
   return oldIncoming;
 }
 

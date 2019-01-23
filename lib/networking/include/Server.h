@@ -117,7 +117,7 @@ public:
    *  instances collected by previous calls to Server::update() and not yet
    *  received.
    */
-  std::deque<Message> receive();
+  [[nodiscard]] std::deque<Message> receive();
 
   /**
    *  Disconnect the Client specified by the given Connection.

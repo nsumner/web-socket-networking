@@ -31,9 +31,9 @@ public:
 
   void processInput(int key);
 
-  size_t getFieldSize() const;
+  [[nodiscard]] size_t getFieldSize() const;
 
-  std::string getFieldString() const;
+  [[nodiscard]] std::string getFieldString() const;
 
   void refreshWindow();
 
@@ -133,7 +133,7 @@ ChatWindowImpl::processInput(int key) {
       pos_form_cursor(entryForm);
       break;
     case KEY_BACKSPACE:
-    case 127:
+    case 127: //ASCII delete
       form_driver(entryForm, REQ_DEL_PREV);
       break;
     case KEY_DC:

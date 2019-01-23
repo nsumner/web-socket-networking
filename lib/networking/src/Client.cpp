@@ -156,7 +156,7 @@ Client::send(std::string message) {
 
   impl->writeBuffer.emplace_back(std::move(message));
   impl->websocket.async_write(boost::asio::buffer(impl->writeBuffer.back()),
-    [this] (auto errorCode, std::size_t size) {
+    [this] (auto errorCode, std::size_t /*size*/) {
       if (!errorCode) {
         impl->writeBuffer.pop_front();
       } else {
@@ -168,7 +168,7 @@ Client::send(std::string message) {
 
 
 bool
-Client::isDisconnected() {
+Client::isDisconnected() const noexcept {
   return impl->isClosed;
 }
 
