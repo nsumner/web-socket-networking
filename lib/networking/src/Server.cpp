@@ -84,6 +84,7 @@ public:
 
 private:
   void readMessage();
+  void afterWrite(std::error_code errorCode, std::size_t size);
 
   bool disconnected;
   Connection connection;
@@ -131,15 +132,39 @@ Channel::send(std::string outgoing) {
   }
   writeBuffer.push_back(std::move(outgoing));
 
-  auto self = shared_from_this();
+  if (1 < writeBuffer.size()) {
+    // Note, multiple writes will be chained within asio via `continueSending`,
+    // so that callback should be used instead of directly invoking async_write
+    // again.
+    return;
+  }
+
   websocket.async_write(boost::asio::buffer(writeBuffer.back()),
-    [this, self] (auto errorCode, std::size_t size) {
-      if (!errorCode) {
-        writeBuffer.pop_front();
-      } else if (!disconnected) {
-        serverImpl.server.disconnect(connection);
-      }
+    [this, self = shared_from_this()] (auto errorCode, std::size_t size) {
+      afterWrite(errorCode, size);
     });
+}
+
+
+void
+Channel::afterWrite(std::error_code errorCode, std::size_t size) {
+  if (errorCode) {
+    if (!disconnected) {
+      serverImpl.server.disconnect(connection);
+    }
+    return;
+  }
+
+  writeBuffer.pop_front();
+
+  // Continue asynchronously processing any further messages that have been
+  // sent.
+  if (!writeBuffer.empty()) {
+    websocket.async_write(boost::asio::buffer(writeBuffer.front()),
+      [this, self = shared_from_this()] (auto errorCode, std::size_t size) {
+        afterWrite(errorCode, size);
+      });
+  }
 }
 
 
