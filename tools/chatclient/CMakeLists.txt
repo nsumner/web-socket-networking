@@ -14,11 +14,6 @@ set_target_properties(chatclient
 find_package(Curses REQUIRED)
 find_package(Threads REQUIRED)
 
-target_include_directories(chatclient
-  PRIVATE
-  ${CURSES_INCLUDE_DIR}
-)
-
 target_link_libraries(chatclient
   networking
   ${CURSES_LIBRARIES}

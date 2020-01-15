@@ -39,11 +39,16 @@ onDisconnect(Connection c) {
 }
 
 
-std::string
-processMessages(Server &server,
-                const std::deque<Message> &incoming,
-                bool &quit) {
+struct MessageResult {
+  std::string result;
+  bool shouldShutdown;
+};
+
+
+MessageResult
+processMessages(Server& server, const std::deque<Message>& incoming) {
   std::ostringstream result;
+  bool quit = false;
   for (auto& message : incoming) {
     if (message.text == "quit") {
       server.disconnect(message.connection);
@@ -54,7 +59,7 @@ processMessages(Server &server,
       result << message.connection.id << "> " << message.text << "\n";
     }
   }
-  return result.str();
+  return MessageResult{result.str(), quit};
 }
 
 
@@ -91,23 +96,28 @@ main(int argc, char* argv[]) {
     return 1;
   }
 
-  bool done = false;
   unsigned short port = std::stoi(argv[1]);
   Server server{port, getHTTPMessage(argv[2]), onConnect, onDisconnect};
 
-  while (!done) {
+  while (true) {
+    bool errorWhileUpdating = false;
     try {
       server.update();
     } catch (std::exception& e) {
       std::cerr << "Exception from Server update:\n"
                 << " " << e.what() << "\n\n";
-      done = true;
+      errorWhileUpdating = true;
     }
 
     auto incoming = server.receive();
-    auto log      = processMessages(server, incoming, done);
+    auto [log, shouldQuit] = processMessages(server, incoming);
     auto outgoing = buildOutgoing(log);
     server.send(outgoing);
+
+    if (shouldQuit || errorWhileUpdating) {
+      break;
+    }
+
     sleep(1);
   }
 
