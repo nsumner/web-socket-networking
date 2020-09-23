@@ -139,7 +139,7 @@ Channel::send(std::string outgoing) {
     return;
   }
 
-  websocket.async_write(boost::asio::buffer(writeBuffer.back()),
+  websocket.async_write(boost::asio::buffer(writeBuffer.front()),
     [this, self = shared_from_this()] (auto errorCode, std::size_t size) {
       afterWrite(errorCode, size);
     });
