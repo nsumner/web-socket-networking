@@ -80,3 +80,21 @@ A browser based interface can be accessed by opening the URL
 specified web page above. By clicking `Connect`, the page gains access to
 chat on the server via web sockets in browsers that support web sockets.
 
+## Running the Example Flutter Chat Client
+
+If you have Flutter installed, then a very simple chat client in Flutter
+will also be built inside the build directory. From the build directory,
+this can be run using:
+
+    cd flutterclient
+    flutter run
+
+You can then enter the chat server location into the client to connect to
+the server and start chatting. For instance, to connect to the server
+configured in the previous example, we could enter:
+
+    ws://localhost:4000
+
+to connect to the local server on port 4000.
+
+
