@@ -36,8 +36,8 @@ public:
   ServerImpl(Server& server, unsigned short port, std::string httpMessage)
    : server{server},
      endpoint{boost::asio::ip::tcp::v4(), port},
-     ioService{},
-     acceptor{ioService, endpoint},
+     ioContext{},
+     acceptor{ioContext, endpoint},
      httpMessage{std::move(httpMessage)} {
     listenForConnections();
   }
@@ -51,7 +51,7 @@ public:
 
   Server& server;
   const boost::asio::ip::tcp::endpoint endpoint;
-  boost::asio::io_service ioService;
+  boost::asio::io_context ioContext;
   boost::asio::ip::tcp::acceptor acceptor;
   boost::beast::http::string_body::value_type httpMessage;
 
@@ -192,9 +192,9 @@ Channel::readMessage() {
 
 class HTTPSession : public std::enable_shared_from_this<HTTPSession> {
 public:
-  HTTPSession(boost::asio::io_service& io_service, ServerImpl& serverImpl)
+  HTTPSession(ServerImpl& serverImpl)
     : serverImpl{serverImpl},
-      socket{io_service},
+      socket{serverImpl.ioContext},
       streamBuf{}
       { }
 
@@ -328,7 +328,7 @@ HTTPSession::handleRequest() {
 void
 ServerImpl::listenForConnections() {
   auto session =
-    std::make_shared<HTTPSession>(acceptor.get_io_service(), *this);
+    std::make_shared<HTTPSession>(*this);
 
   acceptor.async_accept(session->getSocket(),
     [this, session] (auto errorCode) {
@@ -370,7 +370,7 @@ ServerImplDeleter::operator()(ServerImpl* serverImpl) {
 
 void
 Server::update() {
-  impl->ioService.poll();
+  impl->ioContext.poll();
 }
 
 
