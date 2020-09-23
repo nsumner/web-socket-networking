@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 
 
 // Note: The ncurses state needs to be hidden from the public interface
