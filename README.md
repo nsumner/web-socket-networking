@@ -21,7 +21,7 @@ demonstrate how to use this API.
 This project requires:
 
 1. C++17 or newer
-2. Boost >= 1.66
+2. Boost >= 1.72
 3. CMake >= 3.12
 4. NCurses (only tested with 6.1)
 
