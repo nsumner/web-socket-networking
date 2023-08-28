@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -24,7 +23,7 @@ class ChatWithConnectPageApp extends StatelessWidget {
 class ConnectPage extends StatefulWidget {
   final String title;
 
-  ConnectPage({Key key, @required this.title})
+  ConnectPage({Key? key, required this.title})
       : super(key: key);
 
   @override
@@ -47,6 +46,7 @@ class _ConnectPageState extends State<ConnectPage> {
     
     final serverField = TextField(
       obscureText: false,
+      key: ValueKey("ServerField"),
       controller: _serverController,
       decoration: InputDecoration(hintText: "Chat Server Location"),
       autofocus: true,
@@ -55,6 +55,7 @@ class _ConnectPageState extends State<ConnectPage> {
 
     final connectButton = Material(
       child: MaterialButton(
+        key: ValueKey("ConnectButton"),
         color: Color(0x000AACC),
         onPressed: () => _connectToServer(_nameController.text, _serverController.text),
         child: Text("Connect",
@@ -115,7 +116,7 @@ class ChatPage extends StatefulWidget {
   final String title;
   final WebSocketChannel channel;
 
-  ChatPage({Key key, @required this.title, @required this.channel})
+  ChatPage({Key? key, required this.title, required this.channel})
       : super(key: key);
 
   @override
@@ -128,7 +129,7 @@ class _ChatPageState extends State<ChatPage> {
   ScrollController _scrollController = ScrollController(
     keepScrollOffset: true,
   );
-  FocusNode _focusNode;
+  FocusNode? _focusNode;
   List<String> _contents = [];
 
   @override
@@ -144,6 +145,7 @@ class _ChatPageState extends State<ChatPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             TextField(
+              key: ValueKey("MessageField"),
               controller: _controller,
               focusNode: _focusNode,
               autofocus: true,
@@ -161,7 +163,6 @@ class _ChatPageState extends State<ChatPage> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 20.0),
                     child: Scrollbar(
-                      isAlwaysShown: true,
                       controller: _scrollController,
                       child:  ListView.builder(
                         shrinkWrap: true,
@@ -179,6 +180,7 @@ class _ChatPageState extends State<ChatPage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
+        key: ValueKey("SendButton"),
         onPressed: () => _sendMessage(_controller.text),
         tooltip: 'Send message',
         child: Icon(Icons.send),
@@ -187,8 +189,12 @@ class _ChatPageState extends State<ChatPage> {
   }
   
   Widget _buildMessage(BuildContext context, int index) {
+    final id = _contents.length - index - 1;
     return Card(
-      child: Text(_contents[_contents.length - index - 1]),
+      child: Text(
+        _contents[id],
+        key: ValueKey('Message(${id})')
+      ),
     );
   }
 
@@ -197,7 +203,7 @@ class _ChatPageState extends State<ChatPage> {
       widget.channel.sink.add(message);
     }
     _controller.clear();
-    _focusNode.requestFocus();
+    _focusNode?.requestFocus();
   }
 
   @override
@@ -208,7 +214,7 @@ class _ChatPageState extends State<ChatPage> {
   
   @override
   void dispose() {
-    _focusNode.dispose();
+    _focusNode?.dispose();
     widget.channel.sink.close();
     _controller.dispose();
     _scrollController.dispose();

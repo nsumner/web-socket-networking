@@ -12,20 +12,20 @@ function(copy_sources_when_fresh)
     OUTPUT
       ${FLUTTER_BUILD}/pubspec.yaml
       ${FLUTTER_BUILD}/lib/main.dart
-      ${FLUTTER_BUILD}/test_driver/main_test.dart
+      ${FLUTTER_BUILD}/integration_test/main_test.dart
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${FLUTTER_SOURCE}/lib
             ${FLUTTER_BUILD}/lib
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${FLUTTER_SOURCE}/test_driver
-            ${FLUTTER_BUILD}/test_driver
+            ${FLUTTER_SOURCE}/integration_test
+            ${FLUTTER_BUILD}/integration_test
     COMMAND ${CMAKE_COMMAND} -E copy
             ${FLUTTER_SOURCE}/pubspec.yaml
             ${FLUTTER_BUILD}/pubspec.yaml
     DEPENDS
       ${FLUTTER_SOURCE}/pubspec.yaml
       ${FLUTTER_SOURCE}/lib/main.dart
-      ${FLUTTER_SOURCE}/test_driver/main_test.dart
+      ${FLUTTER_SOURCE}/integration_test/main_test.dart
     COMMENT "Copying flutter client to ${FLUTTER_BUILD}"
     VERBATIM
   )
@@ -33,7 +33,7 @@ function(copy_sources_when_fresh)
     DEPENDS
       ${FLUTTER_BUILD}/pubspec.yaml
       ${FLUTTER_BUILD}/lib/main.dart
-      ${FLUTTER_BUILD}/test_driver/main_test.dart
+      ${FLUTTER_BUILD}/integration_test/main_test.dart
   )
   set_property(TARGET flutter_client_source PROPERTY EXCLUDE_FROM_ALL OFF)
 endfunction(copy_sources_when_fresh)
@@ -47,7 +47,7 @@ function(build_flutter_client)
     DEPENDS
       ${FLUTTER_BUILD}/pubspec.yaml
       ${FLUTTER_BUILD}/lib/main.dart
-      ${FLUTTER_BUILD}/test_driver/main_test.dart
+      ${FLUTTER_BUILD}/integration_test/main_test.dart
     COMMENT "Reinitializing flutter project in ${FLUTTER_BUILD}"
     VERBATIM
   )
