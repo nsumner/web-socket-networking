@@ -1,3 +1,6 @@
-add_subdirectory(chatserver)
-add_subdirectory(chatclient)
-add_subdirectory(flutterclient)
+
+add_subdirectory(server)
+add_subdirectory(client-ncurses)
+add_subdirectory(client_flutter)
+add_subdirectory(client-ftxui)
+

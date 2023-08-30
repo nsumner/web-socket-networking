@@ -1,8 +1,8 @@
 
 find_program(FLUTTER_CMD flutter)
 
-set(FLUTTER_BUILD "${CMAKE_BINARY_DIR}/flutterclient")
-set(FLUTTER_SOURCE "${CMAKE_SOURCE_DIR}/tools/flutterclient")
+set(FLUTTER_BUILD "${CMAKE_BINARY_DIR}/client_flutter")
+set(FLUTTER_SOURCE "${CMAKE_SOURCE_DIR}/tools/client_flutter")
 
 # By copying the files into the build directory on demand (when modified),
 # we can still get an out of source build while working with a Flutter
