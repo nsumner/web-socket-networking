@@ -18,6 +18,13 @@
 
 namespace networking {
 
+#ifdef __EMSCRIPTEN__
+
+// The Servers are incompatible with web sockets in the browser, so disable them
+static_assert(false,
+              "Servers are incompatible with emscripten websocket builds");
+
+#else
 
 /**
  *  An identifier for a Client connected to a Server. The ID of a Connection is
@@ -160,6 +167,7 @@ private:
   std::unique_ptr<ServerImpl,ServerImplDeleter> impl;
 };
 
+#endif
 
 }
 

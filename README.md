@@ -2,19 +2,24 @@
 # Single Threaded Web Socket Networking
 
 This repository contains an example library for single threaded client/server
-programs based on web sockets using boost beast. Multiple clients and the server
-can transfer simple string messages back and forth. Because the API is single
-threaded, it integrates easily into a main update loop, e.g. for a game.
-Because it is web socket based, it supports both native and browser based
-clients at the same time. Examples of both are provided.
+programs based on web sockets. The server is built using boost beast and C++.
+Clients support either boost beast or WebAssembly using Emscripten.
+Multiple clients and the server can transfer simple string messages back and
+forth. Because the API is single threaded, it integrates easily into a main
+update loop, e.g. for a game. Because it is web socket based, it supports both
+native and browser based clients at the same time. Examples of both are
+provided.
 
 *Note:* Both the creation of the communication channel as well as all
 communication between the client and the server is insecure. It is trivially
 subject to interception and alteration, and it should not be used to transmit
 sensitive information of any sort.
 
-In addition, a simple chat server with NCurses and browser based chat clients
-demonstrate how to use this API.
+In addition, a simple chat server is provided as well as multiple clients using
+[NCurses](https://invisible-island.net/ncurses/),
+[FTXUI](https://github.com/ArthurSonzogni/FTXUI) with C++ or WebAssembly, and
+[Flutter](https://flutter.dev/).
+
 
 ## Dependencies
 
@@ -22,8 +27,11 @@ This project requires:
 
 1. C++17 or newer
 2. Boost >= 1.72
-3. CMake >= 3.12
-4. NCurses (only tested with 6.1)
+3. CMake >= 3.24
+4. NCurses (only tested with 6.1) [Optional]
+5. FTXUI >= 5.0 [Optional]
+6. Flutter >= 3.0 [Optional]
+
 
 ## Building with CMake
 
@@ -80,6 +88,7 @@ A browser based interface can be accessed by opening the URL
 specified web page above. By clicking `Connect`, the page gains access to
 chat on the server via web sockets in browsers that support web sockets.
 
+
 ## Running the Example Flutter Chat Client
 
 If you have Flutter installed, then a very simple chat client in Flutter
@@ -97,4 +106,33 @@ configured in the previous example, we could enter:
 
 to connect to the local server on port 8000.
 
+
+## Building and Running the Example WebAssembly Chat Client
+
+If you have emscripten installed, then you can configure and build a C++
+client that runs in the browser with WebAssembly. The GUI is driven by
+FTXUI, and the browser client should behave the same as the native client.
+
+Building is similar to a normal CMake process:
+
+1. Create a new directory specifically for building with emscripten.
+
+        mkdir embuild
+
+2. Change into the new directory.
+
+        cd networkbuild
+
+3. Run the emscripten CMake wrapper with the path to the source.
+
+        emcmake cmake ../web-socket-networking/
+
+4. Run the emscripten make wrapper inside the build directory:
+
+        emmake make
+
+Running the client requires starting a simple web server.
+
+        cd bin/
+        ./run_webassembly.py
 

@@ -6,10 +6,18 @@
 /////////////////////////////////////////////////////////////////////////////
 
 
+#ifdef __EMSCRIPTEN__
+
+// The Servers are incompatible with web sockets in the browser, so disable them
+
+#else
+
+
 #include "Server.h"
 
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
+
 
 using namespace std::string_literals;
 using networking::Message;
@@ -415,4 +423,6 @@ Server::buildImpl(Server& server,
   auto* impl = new ServerImpl(server, port, std::move(httpMessage));
   return std::unique_ptr<ServerImpl,ServerImplDeleter>(impl);
 }
+
+#endif
 
