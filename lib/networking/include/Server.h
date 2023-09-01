@@ -140,9 +140,16 @@ private:
   // defined types. This is a form of *type erasure*.
   class ConnectionHandler {
   public:
+    ConnectionHandler() = default;
+    ConnectionHandler(const ConnectionHandler&) = delete;
+    ConnectionHandler(ConnectionHandler&&) = delete;
+
     virtual ~ConnectionHandler() = default;
     virtual void handleConnect(Connection) = 0;
     virtual void handleDisconnect(Connection) = 0;
+
+    ConnectionHandler& operator=(const ConnectionHandler&) = delete;
+    ConnectionHandler& operator=(ConnectionHandler&&) = delete;
   };
 
   template <typename C, typename D>

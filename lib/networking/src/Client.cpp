@@ -24,24 +24,29 @@ using networking::Client;
 
 #include <emscripten/websocket.h>
 
+
+static std::string
+makeHostAddress(std::string_view address, std::string_view port) {
+  std::string hostAddress;
+  // TODO: Replace the protocol with ws:// if needed?
+  hostAddress.reserve(address.size() + port.size() + 1);
+  hostAddress.append(address);
+  hostAddress.push_back(':');
+  hostAddress.append(port);
+  return hostAddress;
+}
+
+
 namespace networking {
 
 
 class Client::ClientImpl {
 public:
   ClientImpl(std::string_view address, std::string_view port)
-    : closed{false},
-      attrs{nullptr, nullptr, EM_TRUE},
-      websocket{},
-      hostAddress{} {
-    // TODO: Replace the protocol with ws:// if needed?
-    hostAddress.reserve(address.size() + port.size() + 1);
-    hostAddress.append(address);
-    hostAddress.push_back(':');
-    hostAddress.append(port);
-    attrs.url = hostAddress.c_str();
-    connect(attrs);
-  }
+    : hostAddress{makeHostAddress(address, port)},
+      attrs{hostAddress.c_str(), nullptr, EM_TRUE},
+      websocket{connect(attrs, this)}
+    { }
 
   void disconnect();
 
@@ -57,7 +62,7 @@ public:
 
 private:
 
-  void connect(EmscriptenWebSocketCreateAttributes& attrs);
+  EMSCRIPTEN_WEBSOCKET_T connect(EmscriptenWebSocketCreateAttributes& attrs) const;
 
   // Static helpers make it easier to interface with the C style callbacks
   // of the emscripten websocket APIs.
@@ -82,10 +87,10 @@ private:
                   const EmscriptenWebSocketMessageEvent* websocketEvent,
                   void* impl);
 
-  bool closed;
+  bool closed = false;
+  const std::string hostAddress;
   EmscriptenWebSocketCreateAttributes attrs;
   EMSCRIPTEN_WEBSOCKET_T websocket;
-  std::string hostAddress;
   std::ostringstream incomingMessage;
   std::deque<std::string> writeBuffer;
 };
@@ -96,6 +101,7 @@ private:
 /////////////////////////////////////////////////////////////////////////////
 // Emscripten Websocket Helpers
 /////////////////////////////////////////////////////////////////////////////
+
 
 EM_BOOL
 Client::ClientImpl::onCloseHelper(int eventType,
@@ -156,6 +162,18 @@ Client::ClientImpl::onMessageHelper(int eventType,
 // Emscripten Client Impl
 /////////////////////////////////////////////////////////////////////////////
 
+
+EMSCRIPTEN_WEBSOCKET_T
+Client::ClientImpl::connect(EmscriptenWebSocketCreateAttributes& attrs) {
+  EMSCRIPTEN_WEBSOCKET_T websocket = emscripten_websocket_new(&attrs);
+  emscripten_websocket_set_onopen_callback(websocket,    this, onOpenHelper);
+  emscripten_websocket_set_onerror_callback(websocket,   this, onErrorHelper);
+  emscripten_websocket_set_onclose_callback(websocket,   this, onCloseHelper);
+  emscripten_websocket_set_onmessage_callback(websocket, this, onMessageHelper);
+  return websocket;
+}
+
+
 void
 Client::ClientImpl::disconnect() {
   closed = true;
@@ -165,15 +183,6 @@ Client::ClientImpl::disconnect() {
   }
 }
 
-
-void
-Client::ClientImpl::connect(EmscriptenWebSocketCreateAttributes& attrs) {
-  websocket = emscripten_websocket_new(&attrs);
-  emscripten_websocket_set_onopen_callback(websocket,    this, onOpenHelper);
-  emscripten_websocket_set_onerror_callback(websocket,   this, onErrorHelper);
-  emscripten_websocket_set_onclose_callback(websocket,   this, onCloseHelper);
-  emscripten_websocket_set_onmessage_callback(websocket, this, onMessageHelper);
-}
 
 enum WSReadyStates : unsigned short {
   CONNECTING = 0,
@@ -215,10 +224,7 @@ namespace networking {
 class Client::ClientImpl {
 public:
   ClientImpl(std::string_view address, std::string_view port)
-    : closed{false},
-      hostAddress{address.data(), address.size()},
-      ioService{},
-      websocket{ioService} {
+    : hostAddress{address.data(), address.size()} {
     boost::asio::ip::tcp::resolver resolver{ioService};
     connect(resolver.resolve(address, port));
   }
@@ -243,10 +249,10 @@ private:
 
   void readMessage();
 
-  bool closed;
+  bool closed = false;
+  boost::asio::io_service ioService{};
+  boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket{ioService};
   std::string hostAddress;
-  boost::asio::io_service ioService;
-  boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket;
   boost::beast::multi_buffer readBuffer;
   std::ostringstream incomingMessage;
   std::deque<std::string> writeBuffer;

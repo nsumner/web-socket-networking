@@ -44,7 +44,6 @@ public:
   ServerImpl(Server& server, unsigned short port, std::string httpMessage)
    : server{server},
      endpoint{boost::asio::ip::tcp::v4(), port},
-     ioContext{},
      acceptor{ioContext, endpoint},
      httpMessage{std::move(httpMessage)} {
     listenForConnections();
@@ -59,7 +58,7 @@ public:
 
   Server& server;
   const boost::asio::ip::tcp::endpoint endpoint;
-  boost::asio::io_context ioContext;
+  boost::asio::io_context ioContext{};
   boost::asio::ip::tcp::acceptor acceptor;
   boost::beast::http::string_body::value_type httpMessage;
 
@@ -76,10 +75,8 @@ public:
 class Channel : public std::enable_shared_from_this<Channel> {
 public:
   Channel(boost::asio::ip::tcp::socket socket, ServerImpl& serverImpl)
-    : disconnected{false},
-      connection{reinterpret_cast<uintptr_t>(this)},
+    : connection{reinterpret_cast<uintptr_t>(this)},
       serverImpl{serverImpl},
-      streamBuf{},
       websocket{std::move(socket)},
       readBuffer{serverImpl.incoming}
       { }
@@ -94,11 +91,11 @@ private:
   void readMessage();
   void afterWrite(std::error_code errorCode, std::size_t size);
 
-  bool disconnected;
+  bool disconnected = false;
   Connection connection;
   ServerImpl &serverImpl;
 
-  boost::beast::flat_buffer streamBuf;
+  boost::beast::flat_buffer streamBuf{};
   boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket;
 
   std::deque<Message> &readBuffer;
@@ -155,7 +152,7 @@ Channel::send(std::string outgoing) {
 
 
 void
-Channel::afterWrite(std::error_code errorCode, std::size_t size) {
+Channel::afterWrite(std::error_code errorCode, std::size_t /*size*/) {
   if (errorCode) {
     if (!disconnected) {
       serverImpl.server.disconnect(connection);
@@ -180,7 +177,7 @@ void
 Channel::readMessage() {
   auto self = shared_from_this();
   websocket.async_read(streamBuf,
-    [this, self] (auto errorCode, std::size_t size) {
+    [this, self] (auto errorCode, std::size_t /*size*/) {
       if (!errorCode) {
         auto message = boost::beast::buffers_to_string(streamBuf.data());
         readBuffer.push_back({connection, std::move(message)});
@@ -200,10 +197,9 @@ Channel::readMessage() {
 
 class HTTPSession : public std::enable_shared_from_this<HTTPSession> {
 public:
-  HTTPSession(ServerImpl& serverImpl)
+  explicit HTTPSession(ServerImpl& serverImpl)
     : serverImpl{serverImpl},
-      socket{serverImpl.ioContext},
-      streamBuf{}
+      socket{serverImpl.ioContext}
       { }
 
   void start();
@@ -214,7 +210,7 @@ public:
 private:
   ServerImpl &serverImpl;
   boost::asio::ip::tcp::socket socket;
-  boost::beast::flat_buffer streamBuf;
+  boost::beast::flat_buffer streamBuf{};
   boost::beast::http::request<boost::beast::http::string_body> request;
 };
 
@@ -392,7 +388,7 @@ Server::receive() {
 
 void
 Server::send(const std::deque<Message>& messages) {
-  for (auto& message : messages) {
+  for (const auto& message : messages) {
     auto found = impl->channels.find(message.connection);
     if (impl->channels.end() != found) {
       found->second->send(message.text);

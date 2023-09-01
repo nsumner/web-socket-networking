@@ -38,6 +38,11 @@ public:
   /** Out of line default constructor for compilation firewall. */
   ~Client();
 
+  Client(const Client&) = delete;
+  Client(Client&&) = delete;
+  Client& operator=(const Client&) = delete;
+  Client& operator=(Client&&) = delete;
+
   /**
    *  Perform all pending sends and receives. This function can throw an
    *  exception if any of the I/O operations encounters an error.

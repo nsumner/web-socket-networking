@@ -49,7 +49,7 @@ MessageResult
 processMessages(Server& server, const std::deque<Message>& incoming) {
   std::ostringstream result;
   bool quit = false;
-  for (auto& message : incoming) {
+  for (const auto& message : incoming) {
     if (message.text == "quit") {
       server.disconnect(message.connection);
     } else if (message.text == "shutdown") {
@@ -80,11 +80,11 @@ getHTTPMessage(const char* htmlLocation) {
     return std::string{std::istreambuf_iterator<char>(infile),
                        std::istreambuf_iterator<char>()};
 
-  } else {
-    std::cerr << "Unable to open HTML index file:\n"
-              << htmlLocation << "\n";
-    std::exit(-1);
   }
+
+  std::cerr << "Unable to open HTML index file:\n"
+            << htmlLocation << "\n";
+  std::exit(-1);
 }
 
 
@@ -96,7 +96,7 @@ main(int argc, char* argv[]) {
     return 1;
   }
 
-  unsigned short port = std::stoi(argv[1]);
+  const unsigned short port = std::stoi(argv[1]);
   Server server{port, getHTTPMessage(argv[2]), onConnect, onDisconnect};
 
   while (true) {
@@ -109,9 +109,9 @@ main(int argc, char* argv[]) {
       errorWhileUpdating = true;
     }
 
-    auto incoming = server.receive();
-    auto [log, shouldQuit] = processMessages(server, incoming);
-    auto outgoing = buildOutgoing(log);
+    const auto incoming = server.receive();
+    const auto [log, shouldQuit] = processMessages(server, incoming);
+    const auto outgoing = buildOutgoing(log);
     server.send(outgoing);
 
     if (shouldQuit || errorWhileUpdating) {

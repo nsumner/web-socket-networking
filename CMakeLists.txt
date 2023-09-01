@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.24)
 project(WebSocketNetworking)
 
 set(PACKAGE_NAME WebSocketNetworking)
-set(PACKAGE_VERSION 0.2)
+set(PACKAGE_VERSION 0.3)
 set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 set(PACKAGE_BUGREPORT "wsumner@sfu.ca")
 
