@@ -260,7 +260,7 @@ HTTPSession::handleRequest() {
   };
 
   auto const badRequest =
-    [&request = this->request] (boost::beast::string_view why) {
+    [&request = this->request] (std::string_view why) {
     boost::beast::http::response<boost::beast::http::string_body> result {
       boost::beast::http::status::bad_request,
       request.version()
@@ -268,7 +268,7 @@ HTTPSession::handleRequest() {
     result.set(boost::beast::http::field::server, BOOST_BEAST_VERSION_STRING);
     result.set(boost::beast::http::field::content_type, "text/html");
     result.keep_alive(request.keep_alive());
-    result.body() = why.to_string();
+    result.body() = why;
     result.prepare_payload();
     return result;
   };
@@ -282,7 +282,7 @@ HTTPSession::handleRequest() {
   // We only support index.html and /.
   auto shouldServeIndex = [] (auto target) {
     std::string const index = "/index.html"s;
-    constexpr auto npos = boost::beast::string_view::npos;
+    constexpr auto npos = std::string_view::npos;
     // NOTE: in C++20, we can use `ends_with` here instead.
     return target == "/"
       || (index.size() <= target.size()
@@ -291,7 +291,7 @@ HTTPSession::handleRequest() {
   if (!shouldServeIndex(request.target())) {
     send(badRequest("Illegal request-target"));
   }
-       
+
   boost::beast::http::string_body::value_type body = serverImpl.httpMessage;
 
   auto addResponseMetaData =
