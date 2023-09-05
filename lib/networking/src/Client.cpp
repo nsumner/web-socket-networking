@@ -45,7 +45,7 @@ public:
   ClientImpl(std::string_view address, std::string_view port)
     : hostAddress{makeHostAddress(address, port)},
       attrs{hostAddress.c_str(), nullptr, EM_TRUE},
-      websocket{connect(attrs, this)}
+      websocket{connect(attrs)}
     { }
 
   void disconnect();
@@ -62,7 +62,7 @@ public:
 
 private:
 
-  EMSCRIPTEN_WEBSOCKET_T connect(EmscriptenWebSocketCreateAttributes& attrs) const;
+  EMSCRIPTEN_WEBSOCKET_T connect(EmscriptenWebSocketCreateAttributes& attrs);
 
   // Static helpers make it easier to interface with the C style callbacks
   // of the emscripten websocket APIs.
