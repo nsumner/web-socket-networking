@@ -8,6 +8,7 @@
 
 #include "Server.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <sstream>
