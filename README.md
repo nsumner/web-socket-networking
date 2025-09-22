@@ -95,7 +95,7 @@ If you have Flutter installed, then a very simple chat client in Flutter
 will also be built inside the build directory. From the build directory,
 this can be run using:
 
-    cd flutterclient
+    cd client_flutter
     flutter run
 
 You can then enter the chat server location into the client to connect to

@@ -9,6 +9,7 @@
 #ifndef NETWORKING_SERVER_H
 #define NETWORKING_SERVER_H
 
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
