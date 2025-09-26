@@ -7,6 +7,10 @@ FetchContent_Declare(ftxui
   GIT_TAG v5.0.0
 )
 
+if (POLICY CMP0169)
+  cmake_policy(SET CMP0169 OLD)
+endif()
+
 FetchContent_GetProperties(ftxui)
 if(NOT ftxui_POPULATED)
   FetchContent_Populate(ftxui)
