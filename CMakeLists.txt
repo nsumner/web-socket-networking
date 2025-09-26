@@ -53,8 +53,8 @@ else()
 endif()
 
 option(ENABLE_FLUTTER_CLIENT "Build the Flutter client" ON)
-option(ENABLE_FTXUI_CLIENT   "Build the FTXUI client" OFF)
-option(ENABLE_NCURSES_CLIENT "Build the NCurses client" OFF)
+option(ENABLE_FTXUI_CLIENT   "Build the FTXUI client" ON)
+option(ENABLE_NCURSES_CLIENT "Build the NCurses client" ON)
 
 add_subdirectory(lib)
 add_subdirectory(tools)
