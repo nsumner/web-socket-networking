@@ -7,5 +7,6 @@
 #define R_OK 4
 #define sleep _sleep
 #else
+// if not windows, use posix functions
 #include <unistd.h>
 #endif

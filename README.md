@@ -26,8 +26,8 @@ In addition, a simple chat server is provided as well as multiple clients using
 This project requires:
 
 1. C++17 or newer
-2. Boost >= 1.72
-3. CMake >= 3.24
+2. Boost >= 1.89
+3. CMake >= 3.30
 4. NCurses (only tested with 6.1) [Optional]
 5. FTXUI >= 5.0 [Optional]
 6. Flutter >= 3.0 [Optional]
