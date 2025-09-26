@@ -69,6 +69,6 @@ if (FLUTTER_CMD)
   build_flutter_client()  
   
 else()
-  message("Flutter not found. Skipping flutter chat client build")
+  message("Flutter not found. Skipping flutter chat client build.")
 endif()
 
