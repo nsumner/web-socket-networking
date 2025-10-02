@@ -225,7 +225,7 @@ class Client::ClientImpl {
 public:
   ClientImpl(std::string_view address, std::string_view port)
     : hostAddress{address.data(), address.size()} {
-    boost::asio::ip::tcp::resolver resolver{ioService};
+    boost::asio::ip::tcp::resolver resolver{ioContext};
     connect(resolver.resolve(address, port));
   }
 
@@ -233,7 +233,7 @@ public:
 
   void reportError(std::string_view message) const;
 
-  void update() { ioService.poll(); }
+  void update() { ioContext.poll(); }
 
   void send(std::string message);
 
@@ -243,15 +243,15 @@ public:
 
 private:
 
-  void connect(boost::asio::ip::tcp::resolver::iterator endpoint);
+  void connect(boost::asio::ip::tcp::resolver::results_type endpoint);
 
   void handshake();
 
   void readMessage();
 
   bool closed = false;
-  boost::asio::io_service ioService{};
-  boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket{ioService};
+  boost::asio::io_context ioContext{};
+  boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket{ioContext};
   std::string hostAddress;
   boost::beast::multi_buffer readBuffer;
   std::ostringstream incomingMessage;
@@ -273,7 +273,7 @@ Client::ClientImpl::disconnect() {
 
 
 void
-Client::ClientImpl::connect(boost::asio::ip::tcp::resolver::iterator endpoint) {
+Client::ClientImpl::connect(boost::asio::ip::tcp::resolver::results_type endpoint) {
   boost::asio::async_connect(websocket.next_layer(), endpoint,
     [this] (auto errorCode, auto) {
       if (!errorCode) {
