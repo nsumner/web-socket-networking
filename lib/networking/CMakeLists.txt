@@ -25,10 +25,10 @@ else()
   )
 endif()
 
+target_compile_features(networking PUBLIC cxx_std_17)
 set_target_properties(networking
-                      PROPERTIES
-                      LINKER_LANGUAGE CXX
-                      CXX_STANDARD 17
+  PROPERTIES
+    LINKER_LANGUAGE CXX
 )
 
 install(TARGETS networking

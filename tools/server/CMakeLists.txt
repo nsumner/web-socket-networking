@@ -3,11 +3,11 @@ add_executable(chatserver
   chatserver.cpp
 )
 
+target_compile_features(chatserver PUBLIC cxx_std_17)
 set_target_properties(chatserver
-                      PROPERTIES
-                      LINKER_LANGUAGE CXX
-                      CXX_STANDARD 17
-                      PREFIX ""
+  PROPERTIES
+    LINKER_LANGUAGE CXX
+    PREFIX ""
 )
 
 find_package(Threads REQUIRED)

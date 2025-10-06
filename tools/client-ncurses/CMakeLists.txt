@@ -4,11 +4,11 @@ add_executable(client-ncurses
   ChatWindow.cpp
 )
 
+target_compile_features(client-ncurses PUBLIC cxx_std_17)
 set_target_properties(client-ncurses
-                      PROPERTIES
-                      LINKER_LANGUAGE CXX
-                      CXX_STANDARD 17
-                      PREFIX ""
+  PROPERTIES
+    LINKER_LANGUAGE CXX
+    PREFIX ""
 )
 
 find_package(Curses REQUIRED)
