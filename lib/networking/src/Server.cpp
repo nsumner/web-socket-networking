@@ -15,7 +15,13 @@
 
 #include "Server.h"
 
+
 #include <boost/asio.hpp>
+#include <boost/asio/awaitable.hpp>
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/detached.hpp>
+#include <boost/asio/experimental/channel.hpp>
+#include <boost/asio/use_awaitable.hpp>
 #include <boost/beast.hpp>
 
 
@@ -40,25 +46,28 @@ class Channel;
 
 class ServerImpl {
 public:
-
-  ServerImpl(Server& server, unsigned short port, std::string httpMessage)
-   : server{server},
-     endpoint{boost::asio::ip::tcp::v4(), port},
-     acceptor{ioContext, endpoint},
-     httpMessage{std::move(httpMessage)} {
-    listenForConnections();
-  }
-
-  void listenForConnections();
-  void registerChannel(Channel& channel);
-  void reportError(std::string_view message);
-
   using ChannelMap =
     std::unordered_map<Connection, std::shared_ptr<Channel>, ConnectionHash>;
 
+  ServerImpl(Server& server, unsigned short port, std::string httpMessage)
+   : server{server},
+     endpoint( boost::asio::ip::tcp::v4(), port),
+     acceptor{ioContext, endpoint},
+     httpMessage{std::move(httpMessage)} {
+    boost::asio::co_spawn(ioContext, acceptLoop(), boost::asio::detached);
+  }
+
+  ~ServerImpl();
+
+  boost::asio::awaitable<void> acceptLoop();
+
+  void registerChannel(Channel& channel);
+  void reportError(std::string_view message);
+
+
   Server& server;
-  const boost::asio::ip::tcp::endpoint endpoint;
   boost::asio::io_context ioContext{};
+  boost::asio::ip::tcp::endpoint endpoint;
   boost::asio::ip::tcp::acceptor acceptor;
   boost::beast::http::string_body::value_type httpMessage;
 
@@ -78,115 +87,109 @@ public:
     : connection{reinterpret_cast<uintptr_t>(this)},
       serverImpl{serverImpl},
       websocket{std::move(socket)},
-      readBuffer{serverImpl.incoming}
+      sendChannel{websocket.get_executor(), 1024}
       { }
 
-  void start(boost::beast::http::request<boost::beast::http::string_body>& request);
   void send(std::string outgoing);
   void disconnect();
 
   [[nodiscard]] Connection getConnection() const noexcept { return connection; }
 
-private:
-  void readMessage();
-  void afterWrite(std::error_code errorCode, std::size_t size);
+  [[nodiscard]] boost::asio::awaitable<void> run(boost::beast::http::request<boost::beast::http::string_body> req);
+  [[nodiscard]] boost::asio::awaitable<void> sendLoop();
 
-  bool disconnected = false;
+private:
   Connection connection;
   ServerImpl &serverImpl;
 
-  boost::beast::flat_buffer streamBuf{};
   boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket;
 
-  std::deque<Message> &readBuffer;
-  std::deque<std::string> writeBuffer;
+  boost::asio::experimental::channel<void(boost::system::error_code, std::string)> sendChannel;
 };
+
+
+ServerImpl::~ServerImpl() {
+  acceptor.close();
+
+  for (auto& [_, ch] : channels) {
+    ch->disconnect();
+  }
+
+  // Run at the end to drain the context
+  ioContext.run();
+  channels.clear();
+}
 
 }
 
 using networking::Channel;
 
 
-void
-Channel::start(boost::beast::http::request<boost::beast::http::string_body>& request) {
-  auto self = shared_from_this();
-  websocket.async_accept(request,
-    [this, self] (std::error_code errorCode) {
-      if (!errorCode) {
-        serverImpl.registerChannel(*this);
-        self->readMessage();
-      } else {
-        serverImpl.server.disconnect(connection);
-      }
-    });
+boost::asio::awaitable<void>
+Channel::run(boost::beast::http::request<boost::beast::http::string_body> req) {
+  auto self = shared_from_this(); //Pin the channel
+  try {
+    co_await websocket.async_accept(req, boost::asio::use_awaitable);
+
+    serverImpl.registerChannel(*this);
+
+    boost::asio::co_spawn(serverImpl.ioContext,
+      [self]() -> boost::asio::awaitable<void> {
+        co_await self->sendLoop();
+      },boost::asio::detached);
+
+    boost::beast::flat_buffer buffer;
+
+    while (true) {
+      co_await websocket.async_read(buffer, boost::asio::use_awaitable);
+
+      auto msg = boost::beast::buffers_to_string(buffer.data());
+      buffer.consume(buffer.size());
+
+      serverImpl.incoming.push_back({connection, std::move(msg)});
+    }
+  } catch (const boost::system::system_error& e) {
+    serverImpl.reportError(e.what());
+    serverImpl.server.disconnect(connection);
+  } catch (...) {
+    serverImpl.server.disconnect(connection);
+  }
 }
 
+boost::asio::awaitable<void>
+Channel::sendLoop() {
+  auto self = shared_from_this(); // Pin the channel
+  try {
+    while (true) {
+      auto [ec, msg] = co_await sendChannel.async_receive(boost::asio::as_tuple(boost::asio::use_awaitable));
+
+      if (ec || !websocket.is_open()) {
+        break;
+      }
+
+      co_await websocket.async_write(boost::asio::buffer(msg), boost::asio::use_awaitable);
+    }
+  } catch (const boost::system::system_error& e) {
+    serverImpl.reportError(e.what());
+    serverImpl.server.disconnect(connection);
+  } catch (...) {
+    serverImpl.server.disconnect(connection);
+  }
+}
+
+void
+Channel::send(std::string msg) {
+  if (!msg.empty()) {
+    sendChannel.async_send({}, std::move(msg), boost::asio::detached);
+  }
+}
 
 void
 Channel::disconnect() {
-  disconnected = true;
   boost::beast::error_code ec;
-  websocket.close(boost::beast::websocket::close_reason{}, ec);
-}
-
-
-void
-Channel::send(std::string outgoing) {
-  if (outgoing.empty()) {
-    return;
-  }
-  writeBuffer.push_back(std::move(outgoing));
-
-  if (1 < writeBuffer.size()) {
-    // Note, multiple writes will be chained within asio via `continueSending`,
-    // so that callback should be used instead of directly invoking async_write
-    // again.
-    return;
-  }
-
-  websocket.async_write(boost::asio::buffer(writeBuffer.front()),
-    [this, self = shared_from_this()] (auto errorCode, std::size_t size) {
-      afterWrite(errorCode, size);
-    });
-}
-
-
-void
-Channel::afterWrite(std::error_code errorCode, std::size_t /*size*/) {
-  if (errorCode) {
-    if (!disconnected) {
-      serverImpl.server.disconnect(connection);
-    }
-    return;
-  }
-
-  writeBuffer.pop_front();
-
-  // Continue asynchronously processing any further messages that have been
-  // sent.
-  if (!writeBuffer.empty()) {
-    websocket.async_write(boost::asio::buffer(writeBuffer.front()),
-      [this, self = shared_from_this()] (auto errorCode, std::size_t size) {
-        afterWrite(errorCode, size);
-      });
-  }
-}
-
-
-void
-Channel::readMessage() {
-  auto self = shared_from_this();
-  websocket.async_read(streamBuf,
-    [this, self] (auto errorCode, std::size_t /*size*/) {
-      if (!errorCode) {
-        auto message = boost::beast::buffers_to_string(streamBuf.data());
-        readBuffer.push_back({connection, std::move(message)});
-        streamBuf.consume(streamBuf.size());
-        this->readMessage();
-      } else if (!disconnected) {
-        serverImpl.server.disconnect(connection);
-      }
-    });
+  websocket.next_layer().cancel(ec);
+  websocket.close(boost::beast::websocket::close_code::normal, ec);
+  sendChannel.close();
 }
 
 
@@ -195,131 +198,83 @@ Channel::readMessage() {
 ////////////////////////////////////////////////////////////////////////////////
 
 
-class HTTPSession : public std::enable_shared_from_this<HTTPSession> {
-public:
-  explicit HTTPSession(ServerImpl& serverImpl)
-    : serverImpl{serverImpl},
-      socket{serverImpl.ioContext}
-      { }
+boost::asio::awaitable<void>
+handleSession(ServerImpl& impl, boost::asio::ip::tcp::socket socket) {
+  boost::beast::flat_buffer buffer;
+  boost::beast::http::request<boost::beast::http::string_body> req;
 
-  void start();
-  void handleRequest();
+  try {
+    co_await boost::beast::http::async_read(socket, buffer, req, boost::asio::use_awaitable);
 
-  boost::asio::ip::tcp::socket & getSocket() { return socket; }
+    if (boost::beast::websocket::is_upgrade(req)) {
+      auto channel = std::make_shared<Channel>(std::move(socket), impl);
 
-private:
-  ServerImpl &serverImpl;
-  boost::asio::ip::tcp::socket socket;
-  boost::beast::flat_buffer streamBuf{};
-  boost::beast::http::request<boost::beast::http::string_body> request;
-};
+      boost::asio::co_spawn(impl.ioContext,
+                            [channel, req = std::move(req)]() mutable -> boost::asio::awaitable<void> {
+                              co_await channel->run(std::move(req));
+                            }, boost::asio::detached);
 
+      co_return;
+    }
 
-void
-HTTPSession::start() {
-  boost::beast::http::async_read(socket, streamBuf, request,
-    [this, session = this->shared_from_this()]
-    (std::error_code ec, std::size_t /*bytes*/) {
-      if (ec) {
-        serverImpl.reportError("Error reading from HTTP stream.");
+    // Handle HTTP (index.html only)
+    auto const badRequest = [&](std::string_view why) {
+      boost::beast::http::response<boost::beast::http::string_body> res{boost::beast::http::status::bad_request, req.version()};
+      res.set(boost::beast::http::field::content_type, "text/html");
+      res.body() = std::string(why);
+      res.prepare_payload();
+      return res;
+    };
 
-      } else if (boost::beast::websocket::is_upgrade(request)) {
-        auto channel = std::make_shared<Channel>(std::move(socket), serverImpl);
-        channel->start(request);
+    if (req.method() != boost::beast::http::verb::get && req.method() != boost::beast::http::verb::head) {
+      auto res = badRequest("Unknown HTTP-method");
+      co_await boost::beast::http::async_write(socket, res, boost::asio::use_awaitable);
+      co_return;
+    }
 
-      } else {
-        session->handleRequest();
-      }
-    });
+    std::string body = impl.httpMessage;
+
+    boost::beast::http::response<boost::beast::http::string_body> res{
+      std::piecewise_construct,
+      std::make_tuple(body),
+      std::make_tuple(boost::beast::http::status::ok, req.version())
+    };
+
+    res.set(boost::beast::http::field::content_type, "text/html");
+    res.prepare_payload();
+
+    co_await boost::beast::http::async_write(socket, res, boost::asio::use_awaitable);
+
+  } catch (const boost::system::system_error& e) {
+    impl.reportError(e.what());
+  } catch (...) {
+    impl.reportError("HTTP session error");
+  }
 }
 
 
-void
-HTTPSession::handleRequest() {
-  auto send = [this, session = this->shared_from_this()] (auto&& response) {
-    using Response = typename std::decay<decltype(response)>::type;
-    auto sharedResponse =
-      std::make_shared<Response>(std::forward<decltype(response)>(response));
+/////////////////////////////////////////////////////////////////////////////
+// Accept Loop
+/////////////////////////////////////////////////////////////////////////////
 
-    boost::beast::http::async_write(socket, *sharedResponse,
-      [this, session, sharedResponse] (std::error_code ec, std::size_t /*bytes*/) {
-        if (ec) {
-          session->serverImpl.reportError("Error writing to HTTP stream");
-          socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send);
-        } else if (sharedResponse->need_eof()) {
-          // This signifies a deliberate close
-          boost::system::error_code ec;
-          socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec);
-          if (ec) {
-            session->serverImpl.reportError("Error closing HTTP stream");
-          }
-        } else {
-          session->start();
-        }
-      });
-  };
+boost::asio::awaitable<void>
+ServerImpl::acceptLoop() {
+  while (acceptor.is_open()) {
+    try {
+      boost::asio::ip::tcp::socket socket = co_await acceptor.async_accept(boost::asio::use_awaitable);
 
-  auto const badRequest =
-    [&request = this->request] (std::string_view why) {
-    boost::beast::http::response<boost::beast::http::string_body> result {
-      boost::beast::http::status::bad_request,
-      request.version()
-    };
-    result.set(boost::beast::http::field::server, BOOST_BEAST_VERSION_STRING);
-    result.set(boost::beast::http::field::content_type, "text/html");
-    result.keep_alive(request.keep_alive());
-    result.body() = why;
-    result.prepare_payload();
-    return result;
-  };
+      boost::asio::co_spawn(ioContext,
+                    handleSession(*this, std::move(socket)),
+                    boost::asio::detached);
 
-  if (auto method = request.method();
-      method != boost::beast::http::verb::get
-      && method != boost::beast::http::verb::head) {
-    send(badRequest("Unknown HTTP-method"));
-  }
-
-  // We only support index.html and /.
-  auto shouldServeIndex = [] (auto target) {
-    std::string const index = "/index.html"s;
-    constexpr auto npos = std::string_view::npos;
-    // NOTE: in C++20, we can use `ends_with` here instead.
-    return target == "/"
-      || (index.size() <= target.size()
-        && target.compare(target.size() - index.size(), npos, index) == 0);
-  };
-  if (!shouldServeIndex(request.target())) {
-    send(badRequest("Illegal request-target"));
-  }
-
-  boost::beast::http::string_body::value_type body = serverImpl.httpMessage;
-
-  auto addResponseMetaData =
-    [bodySize = body.size(), &request = this->request] (auto& response) {
-    response.set(boost::beast::http::field::server, BOOST_BEAST_VERSION_STRING);
-    response.set(boost::beast::http::field::content_type, "text/html");
-    response.content_length(bodySize);
-    response.keep_alive(request.keep_alive());
-  };
-
-  if (request.method() == boost::beast::http::verb::head) {
-    // Respond to HEAD
-    boost::beast::http::response<boost::beast::http::empty_body> result {
-      boost::beast::http::status::ok,
-      request.version()
-    };
-    addResponseMetaData(result);
-    send(std::move(result));
-
-  } else {
-    // Respond to GET
-    boost::beast::http::response<boost::beast::http::string_body> result {
-      std::piecewise_construct,
-      std::make_tuple(std::move(body)),
-      std::make_tuple(boost::beast::http::status::ok, request.version())
-    };
-    addResponseMetaData(result);
-    send(std::move(result));
+    } catch (const boost::system::system_error& e) {
+      if (e.code() == boost::asio::error::operation_aborted) {
+        co_return;
+      }
+      reportError("Accept boost error");
+    } catch (...) {
+      reportError("Accept error");
+    }
   }
 }
 
@@ -327,23 +282,6 @@ HTTPSession::handleRequest() {
 /////////////////////////////////////////////////////////////////////////////
 // Hidden Server implementation
 /////////////////////////////////////////////////////////////////////////////
-
-
-void
-ServerImpl::listenForConnections() {
-  auto session =
-    std::make_shared<HTTPSession>(*this);
-
-  acceptor.async_accept(session->getSocket(),
-    [this, session] (auto errorCode) {
-      if (!errorCode) {
-        session->start();
-      } else {
-        reportError("Fatal error while accepting");
-      }
-      this->listenForConnections();
-    });
-}
 
 
 void
@@ -355,7 +293,7 @@ ServerImpl::registerChannel(Channel& channel) {
 
 
 void
-ServerImpl::reportError(std::string_view /*message*/) {
+ServerImpl::reportError(std::string_view message) {
   // Swallow errors....
 }
 
@@ -401,9 +339,12 @@ void
 Server::disconnect(Connection connection) {
   auto found = impl->channels.find(connection);
   if (impl->channels.end() != found) {
-    connectionHandler->handleDisconnect(connection);
-    found->second->disconnect();
+    // Pin the channel locally while cleaning up.
+    auto channel = std::move(found->second);
     impl->channels.erase(found);
+
+    connectionHandler->handleDisconnect(connection);
+    channel->disconnect();
   }
 }
 

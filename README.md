@@ -121,7 +121,7 @@ Building is similar to a normal CMake process:
 
 2. Change into the new directory.
 
-        cd networkbuild
+        cd embuild
 
 3. Run the emscripten CMake wrapper with the path to the source.
 

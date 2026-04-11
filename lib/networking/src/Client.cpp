@@ -10,7 +10,8 @@
 
 
 #include <deque>
-#include <sstream>
+#include <ranges>
+#include <utility>
 
 using networking::Client;
 
@@ -20,9 +21,33 @@ using networking::Client;
 /////////////////////////////////////////////////////////////////////////////
 
 
+/////////////////////////////////////////////////////////////////////////////
+// Channels for emscripten
+/////////////////////////////////////////////////////////////////////////////
+
+
 #ifdef __EMSCRIPTEN__
 
 #include <emscripten/websocket.h>
+
+
+class SimpleChannel {
+public:
+  void send(std::string value) {
+    queue.push_back(std::move(value));
+  }
+
+  std::deque<std::string> drain() {
+    std::deque<std::string> result = std::move(queue);
+    queue = std::deque<std::string>{};
+    return result;
+  }
+
+  bool empty() const { return queue.empty(); }
+
+private:
+  std::deque<std::string> queue;
+};
 
 
 static std::string
@@ -48,6 +73,12 @@ public:
       websocket{connect(attrs)}
     { }
 
+  ~ClientImpl() {
+    if (websocket > 0) {
+      emscripten_websocket_delete(websocket);
+    }
+  }
+
   void disconnect();
 
   void reportError(std::string_view message) const;
@@ -56,7 +87,7 @@ public:
 
   void send(std::string message);
 
-  std::ostringstream& getIncomingStream() { return incomingMessage; }
+  std::deque<std::string> receive();
 
   bool isClosed() const { return closed; }
 
@@ -91,8 +122,9 @@ private:
   const std::string hostAddress;
   EmscriptenWebSocketCreateAttributes attrs;
   EMSCRIPTEN_WEBSOCKET_T websocket;
-  std::ostringstream incomingMessage;
-  std::deque<std::string> writeBuffer;
+
+  SimpleChannel incoming;
+  SimpleChannel outgoing;
 };
 
 
@@ -107,8 +139,7 @@ EM_BOOL
 Client::ClientImpl::onCloseHelper(int eventType,
                                   const EmscriptenWebSocketCloseEvent* websocketEvent,
                                   void* implAsVoid) {
-  Client::ClientImpl* impl = reinterpret_cast<Client::ClientImpl*>(implAsVoid);
-  impl->closed = true;
+  static_cast<ClientImpl*>(implAsVoid)->closed = true;
   return EM_TRUE;
 }
 
@@ -117,17 +148,12 @@ EM_BOOL
 Client::ClientImpl::onOpenHelper(int eventType,
                                  const EmscriptenWebSocketOpenEvent* websocketEvent,
                                  void* implAsVoid) {
-  Client::ClientImpl* impl = reinterpret_cast<Client::ClientImpl*>(implAsVoid);
-  if (!impl->writeBuffer.empty()) {
-    for (const auto& message : impl->writeBuffer) {
-      auto result = emscripten_websocket_send_utf8_text(impl->websocket, message.c_str());
-      if (result) {
-        impl->disconnect();
-        break;
-      }
-    }
-    impl->writeBuffer.clear();
+  auto* impl = static_cast<ClientImpl*>(implAsVoid);
+
+  for (const auto& msg : impl->outgoing.drain()) {
+    emscripten_websocket_send_utf8_text(impl->websocket, msg.c_str());
   }
+
   return EM_TRUE;
 }
 
@@ -136,8 +162,7 @@ EM_BOOL
 Client::ClientImpl::onErrorHelper(int eventType,
                                   const EmscriptenWebSocketErrorEvent* websocketEvent,
                                   void* implAsVoid) {
-  Client::ClientImpl* impl = reinterpret_cast<Client::ClientImpl*>(implAsVoid);
-  impl->disconnect();
+  static_cast<ClientImpl*>(implAsVoid)->disconnect();
   return EM_TRUE;
 }
 
@@ -146,14 +171,18 @@ EM_BOOL
 Client::ClientImpl::onMessageHelper(int eventType,
                                     const EmscriptenWebSocketMessageEvent* websocketEvent,
                                     void* implAsVoid) {
-  Client::ClientImpl* impl = reinterpret_cast<Client::ClientImpl*>(implAsVoid);
+  auto* impl = static_cast<ClientImpl*>(implAsVoid);
+
   if (!websocketEvent->isText) {
-    printf("Non text socket info!\n");
     impl->disconnect();
+    return EM_TRUE;
   }
 
-  impl->incomingMessage.write(reinterpret_cast<const char*>(websocketEvent->data),
-                              websocketEvent->numBytes);
+  impl->incoming.send(
+    std::string(reinterpret_cast<const char*>(websocketEvent->data),
+                                              websocketEvent->numBytes)
+  );
+
   return EM_TRUE;
 }
 
@@ -194,21 +223,29 @@ enum WSReadyStates : unsigned short {
 
 void
 Client::ClientImpl::send(std::string message) {
+  if (closed) {
+    return;
+  }
+
   unsigned short readyState = 0;
-  auto result = emscripten_websocket_get_ready_state(websocket, &readyState);
-  if (result) {
+  if (auto result = emscripten_websocket_get_ready_state(websocket, &readyState)) {
     disconnect();
     return;
   }
 
   if (readyState == OPEN) {
-    auto result = emscripten_websocket_send_utf8_text(websocket, message.c_str());
-    if (result) {
+    if (auto result = emscripten_websocket_send_utf8_text(websocket, message.c_str())) {
       disconnect();
     }
   } else {
-    writeBuffer.push_back(std::move(message));
+    outgoing.send(std::move(message));
   }
+}
+
+
+std::deque<std::string>
+Client::ClientImpl::receive() {
+  return incoming.drain();
 }
 
 
@@ -216,6 +253,10 @@ Client::ClientImpl::send(std::string message) {
 
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
+#include <boost/asio/experimental/channel.hpp>
+#include <boost/asio/awaitable.hpp>
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/use_awaitable.hpp>
 
 
 namespace networking {
@@ -224,9 +265,21 @@ namespace networking {
 class Client::ClientImpl {
 public:
   ClientImpl(std::string_view address, std::string_view port)
-    : hostAddress{address.data(), address.size()} {
-    boost::asio::ip::tcp::resolver resolver{ioContext};
-    connect(resolver.resolve(address, port));
+    : ioContext{},
+      resolver{ioContext},
+      websocket{ioContext},
+      outgoing{ioContext, 1024},
+      incoming{},
+      hostAddress{address},
+      hostPort{port} {
+    // TODO: Other command line args?
+    boost::asio::co_spawn(ioContext, session(), boost::asio::detached);
+  }
+
+  ~ClientImpl() {
+    disconnect();
+    // Run at the end to drain the context
+    ioContext.run();
   }
 
   void disconnect();
@@ -237,98 +290,118 @@ public:
 
   void send(std::string message);
 
-  std::ostringstream& getIncomingStream() { return incomingMessage; }
+  std::deque<std::string> receive();
 
   bool isClosed() const { return closed; }
 
 private:
 
-  void connect(boost::asio::ip::tcp::resolver::results_type endpoint);
+  boost::asio::awaitable<void> session();
 
-  void handshake();
+  boost::asio::awaitable<void> reader();
 
-  void readMessage();
+  boost::asio::awaitable<void> writer();
+
+  boost::asio::io_context ioContext;
+  boost::asio::ip::tcp::resolver resolver;
+  boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket;
+
+  boost::asio::experimental::channel<void(boost::system::error_code, std::string)> outgoing;
+  std::deque<std::string> incoming;
 
   bool closed = false;
-  boost::asio::io_context ioContext{};
-  boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket{ioContext};
   std::string hostAddress;
-  boost::beast::multi_buffer readBuffer;
-  std::ostringstream incomingMessage;
-  std::deque<std::string> writeBuffer;
+  std::string hostPort;
 };
 
 
 }
 
 
+boost::asio::awaitable<void>
+Client::ClientImpl::session() {
+  try {
+    auto endpoint = co_await resolver.async_resolve(hostAddress, hostPort, boost::asio::use_awaitable);
+
+    co_await boost::asio::async_connect(websocket.next_layer(), endpoint, boost::asio::use_awaitable);
+
+    co_await websocket.async_handshake(hostAddress, "/", boost::asio::use_awaitable);
+
+    boost::asio::co_spawn(ioContext, reader(), boost::asio::detached);
+    co_await writer();
+
+  } catch (const boost::system::system_error& e) {
+    reportError(e.what());
+    disconnect();
+  } catch (...) {
+    disconnect();
+  }
+}
+
+
+boost::asio::awaitable<void>
+Client::ClientImpl::reader() {
+  try {
+    while (!isClosed()) {
+      boost::beast::flat_buffer buffer;
+      co_await websocket.async_read(buffer, boost::asio::use_awaitable);
+      incoming.push_back(boost::beast::buffers_to_string(buffer.data()));
+    }
+  } catch (const boost::system::system_error& e) {
+    reportError(e.what());
+    disconnect();
+  } catch (...) {
+    disconnect();
+  }
+}
+
+
+boost::asio::awaitable<void>
+Client::ClientImpl::writer() {
+  try {
+    while (!isClosed()) {
+      std::string message = co_await outgoing.async_receive(boost::asio::use_awaitable);
+      co_await websocket.async_write(boost::asio::buffer(message), boost::asio::use_awaitable);
+    }
+  } catch (const boost::system::system_error& e) {
+    reportError(e.what());
+    disconnect();
+  } catch (...) {
+    disconnect();
+  }
+}
+
+
 void
 Client::ClientImpl::disconnect() {
+  if (closed) {
+    return;
+  }
+
   closed = true;
-  websocket.async_close(boost::beast::websocket::close_code::normal,
-    [] (auto errorCode) {
-      // Swallow errors while closing.
-    });
+  outgoing.close();
+  if (websocket.is_open()) {
+    boost::beast::get_lowest_layer(websocket).cancel();
+  }
 }
 
-
-void
-Client::ClientImpl::connect(boost::asio::ip::tcp::resolver::results_type endpoint) {
-  boost::asio::async_connect(websocket.next_layer(), endpoint,
-    [this] (auto errorCode, auto) {
-      if (!errorCode) {
-        this->handshake();
-      } else {
-        reportError("Unable to connect.");
-      }
-    });
-}
-
-
-void
-Client::ClientImpl::handshake() {
-  websocket.async_handshake(hostAddress, "/",
-    [this] (auto errorCode) {
-      if (!errorCode) {
-        this->readMessage();
-      } else {
-        reportError("Unable to handshake.");
-      }
-    });
-}
-
-
-void
-Client::ClientImpl::readMessage() {
-  websocket.async_read(readBuffer,
-    [this] (auto errorCode, std::size_t size) {
-      if (!errorCode) {
-        if (size > 0) {
-          auto message = boost::beast::buffers_to_string(readBuffer.data());
-          incomingMessage.write(message.c_str(), message.size());
-          readBuffer.consume(readBuffer.size());
-          this->readMessage();
-        }
-      } else {
-        reportError("Unable to read.");
-        this->disconnect();
-      }
-    });
-}
 
 
 void
 Client::ClientImpl::send(std::string message) {
-  writeBuffer.emplace_back(std::move(message));
-  websocket.async_write(boost::asio::buffer(writeBuffer.back()),
-    [this] (auto errorCode, std::size_t /*size*/) {
-      if (!errorCode) {
-        writeBuffer.pop_front();
-      } else {
-        reportError("Unable to write.");
-        disconnect();
-      }
-    });
+  if (isClosed() || message.empty()) {
+    return;
+  }
+
+  if (!outgoing.try_send(boost::system::error_code{}, std::move(message))) {
+    reportError("Send buffer full");
+  }
+}
+
+
+std::deque<std::string>
+Client::ClientImpl::receive() {
+  return std::exchange(incoming, std::deque<std::string>{});
 }
 
 
@@ -363,11 +436,9 @@ Client::update() {
 
 std::string
 Client::receive() {
-  auto& stream = impl->getIncomingStream();
-  auto result = stream.str();
-  stream.str(std::string{});
-  stream.clear();
-  return result;
+  return impl->receive()
+      | std::views::join
+      | std::ranges::to<std::string>();
 }
 
 

@@ -4,7 +4,7 @@ add_executable(client-ncurses
   ChatWindow.cpp
 )
 
-target_compile_features(client-ncurses PUBLIC cxx_std_17)
+target_compile_features(client-ncurses PUBLIC cxx_std_23)
 set_target_properties(client-ncurses
   PROPERTIES
     LINKER_LANGUAGE CXX

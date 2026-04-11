@@ -14,7 +14,7 @@ add_executable(client-ftxui
   chatclient.cpp
 )
 
-target_compile_features(client-ftxui PUBLIC cxx_std_17)
+target_compile_features(client-ftxui PUBLIC cxx_std_23)
 set_target_properties(client-ftxui
   PROPERTIES
     LINKER_LANGUAGE CXX

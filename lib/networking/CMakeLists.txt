@@ -18,14 +18,14 @@ if (NETWORKING_EMSCRIPTEN_BUILD)
       websocket.js
   )
 else()
-  find_package(Boost 1.72 CONFIG COMPONENTS)
+  find_package(Boost 1.83 CONFIG COMPONENTS)
   target_link_libraries(networking
     PRIVATE
       Boost::boost
   )
 endif()
 
-target_compile_features(networking PUBLIC cxx_std_17)
+target_compile_features(networking PUBLIC cxx_std_23)
 set_target_properties(networking
   PROPERTIES
     LINKER_LANGUAGE CXX

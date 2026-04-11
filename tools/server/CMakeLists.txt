@@ -3,7 +3,7 @@ add_executable(chatserver
   chatserver.cpp
 )
 
-target_compile_features(chatserver PUBLIC cxx_std_17)
+target_compile_features(chatserver PUBLIC cxx_std_23)
 set_target_properties(chatserver
   PROPERTIES
     LINKER_LANGUAGE CXX
