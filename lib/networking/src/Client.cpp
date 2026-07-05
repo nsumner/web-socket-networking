@@ -17,11 +17,6 @@ using networking::Client;
 
 
 /////////////////////////////////////////////////////////////////////////////
-// Private Client API
-/////////////////////////////////////////////////////////////////////////////
-
-
-/////////////////////////////////////////////////////////////////////////////
 // Channels for emscripten
 /////////////////////////////////////////////////////////////////////////////
 
@@ -252,11 +247,21 @@ Client::ClientImpl::receive() {
 #else
 
 #include <boost/asio.hpp>
+#include <boost/asio/cancel_after.hpp>
+#include <boost/asio/experimental/awaitable_operators.hpp>
 #include <boost/beast.hpp>
-#include <boost/asio/experimental/channel.hpp>
-#include <boost/asio/awaitable.hpp>
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/use_awaitable.hpp>
+
+#include <cassert>
+#include <chrono>
+
+namespace asio = boost::asio;
+namespace beast = boost::beast;
+
+using asio::as_tuple;
+using asio::awaitable;
+using asio::use_awaitable;
+using namespace asio::experimental::awaitable_operators;
+using namespace std::chrono_literals;
 
 
 namespace networking {
@@ -265,24 +270,35 @@ namespace networking {
 class Client::ClientImpl {
 public:
   ClientImpl(std::string_view address, std::string_view port)
-    : ioContext{},
-      resolver{ioContext},
-      websocket{ioContext},
-      outgoing{ioContext, 1024},
-      incoming{},
+    : websocket{ioContext},
+      wakeTimer{ioContext, std::chrono::steady_clock::time_point::max()},
       hostAddress{address},
       hostPort{port} {
-    // TODO: Other command line args?
-    boost::asio::co_spawn(ioContext, session(), boost::asio::detached);
+    asio::co_spawn(ioContext, session(),
+      asio::bind_cancellation_slot(stopSignal.slot(),
+        [this](std::exception_ptr error) {
+          if (error) {
+            reportError("Session ended with an exception");
+          }
+          closed = true;
+          sessionDone = true;
+        }));
   }
 
   ~ClientImpl() {
-    disconnect();
-    // Run at the end to drain the context
-    ioContext.run();
+    stopSignal.emit(asio::cancellation_type::terminal);
+    // Drive the context until the session coroutine has completed, so its
+    // frame and every queued message are destroyed deterministically.
+    while (!sessionDone) {
+      ioContext.restart();
+      if (ioContext.run() == 0 && !sessionDone) {
+        // No further progress is possible. This indicates the session is
+        // suspended on something cancellation cannot reach — a bug.
+        assert(false && "session coroutine failed to complete during shutdown");
+        break;
+      }
+    }
   }
-
-  void disconnect();
 
   void reportError(std::string_view message) const;
 
@@ -290,26 +306,28 @@ public:
 
   void send(std::string message);
 
-  std::deque<std::string> receive();
+  std::deque<std::string> receive() {
+    return std::exchange(incoming, std::deque<std::string>{});
+  }
 
   bool isClosed() const { return closed; }
 
 private:
+  awaitable<void> session();
+  awaitable<void> reader();
+  awaitable<void> writer();
 
-  boost::asio::awaitable<void> session();
+  asio::io_context ioContext;
+  beast::websocket::stream<asio::ip::tcp::socket> websocket;
 
-  boost::asio::awaitable<void> reader();
-
-  boost::asio::awaitable<void> writer();
-
-  boost::asio::io_context ioContext;
-  boost::asio::ip::tcp::resolver resolver;
-  boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket;
-
-  boost::asio::experimental::channel<void(boost::system::error_code, std::string)> outgoing;
+  // The timer is parked forever and cancelled to signal "queue is not empty".
+  asio::steady_timer wakeTimer;
+  std::deque<std::string> outbound;
   std::deque<std::string> incoming;
 
+  asio::cancellation_signal stopSignal;
   bool closed = false;
+  bool sessionDone = false;
   std::string hostAddress;
   std::string hostPort;
 };
@@ -320,88 +338,94 @@ private:
 
 boost::asio::awaitable<void>
 Client::ClientImpl::session() {
-  try {
-    auto endpoint = co_await resolver.async_resolve(hostAddress, hostPort, boost::asio::use_awaitable);
+  asio::ip::tcp::resolver resolver{ioContext};
+  // Note: unlike the async form, this call is not cancellable, so a slow or
+  // unreachable DNS server stalls the first update() (or the destructor drain,
+  // if never pumped) for the system resolver timeout.
+  boost::system::error_code resolveError;
+  auto endpoints = resolver.resolve(hostAddress, hostPort, resolveError);
+  if (resolveError) {
+    reportError("Resolve failed");
+    co_return;
+  }
 
-    co_await boost::asio::async_connect(websocket.next_layer(), endpoint, boost::asio::use_awaitable);
+  auto [connectError, endpoint] =
+    co_await asio::async_connect(websocket.next_layer(), endpoints,
+                                 as_tuple(use_awaitable));
+  (void)endpoint;
+  if (connectError) {
+    reportError("Connect failed");
+    co_return;
+  }
 
-    co_await websocket.async_handshake(hostAddress, "/", boost::asio::use_awaitable);
+  auto [handshakeError] =
+    co_await websocket.async_handshake(hostAddress, "/",
+                                       as_tuple(use_awaitable));
+  if (handshakeError) {
+    reportError("Handshake failed");
+    co_return;
+  }
 
-    boost::asio::co_spawn(ioContext, reader(), boost::asio::detached);
-    co_await writer();
+  co_await (reader() || writer());
 
-  } catch (const boost::system::system_error& e) {
-    reportError(e.what());
-    disconnect();
-  } catch (...) {
-    disconnect();
+  // Best-effort graceful close, skipped when cancelled (client destruction)
+  // so teardown never depends on the peer. Bounded so an unresponsive server
+  // cannot stall. A dead transport fails at once.
+  auto state = co_await asio::this_coro::cancellation_state;
+  if (state.cancelled() == asio::cancellation_type::none
+      && websocket.is_open()) {
+    co_await websocket.async_close(beast::websocket::close_code::normal,
+                                   asio::cancel_after(1s, as_tuple(use_awaitable)));
   }
 }
 
 
 boost::asio::awaitable<void>
 Client::ClientImpl::reader() {
-  try {
-    while (!isClosed()) {
-      boost::beast::flat_buffer buffer;
-      co_await websocket.async_read(buffer, boost::asio::use_awaitable);
-      incoming.push_back(boost::beast::buffers_to_string(buffer.data()));
+  beast::flat_buffer buffer;
+  while (true) {
+    auto [error, bytes] =
+      co_await websocket.async_read(buffer, as_tuple(use_awaitable));
+    (void)bytes;
+    if (error) {
+      co_return;
     }
-  } catch (const boost::system::system_error& e) {
-    reportError(e.what());
-    disconnect();
-  } catch (...) {
-    disconnect();
+    incoming.push_back(beast::buffers_to_string(buffer.data()));
+    buffer.consume(buffer.size());
   }
 }
 
 
 boost::asio::awaitable<void>
 Client::ClientImpl::writer() {
-  try {
-    while (!isClosed()) {
-      std::string message = co_await outgoing.async_receive(boost::asio::use_awaitable);
-      co_await websocket.async_write(boost::asio::buffer(message), boost::asio::use_awaitable);
+  auto cancelState = co_await asio::this_coro::cancellation_state;
+  while (cancelState.cancelled() == asio::cancellation_type::none) {
+    if (outbound.empty()) {
+      // Park until send() cancels the timer or we are cancelled.
+      // The loop condition distinguishes the two.
+      co_await wakeTimer.async_wait(as_tuple(use_awaitable));
+      continue;
     }
-  } catch (const boost::system::system_error& e) {
-    reportError(e.what());
-    disconnect();
-  } catch (...) {
-    disconnect();
+    std::string message = std::move(outbound.front());
+    outbound.pop_front();
+    auto [error, bytes] =
+      co_await websocket.async_write(asio::buffer(message),
+                                     as_tuple(use_awaitable));
+    (void)bytes;
+    if (error) {
+      co_return;
+    }
   }
 }
-
-
-void
-Client::ClientImpl::disconnect() {
-  if (closed) {
-    return;
-  }
-
-  closed = true;
-  outgoing.close();
-  if (websocket.is_open()) {
-    boost::beast::get_lowest_layer(websocket).cancel();
-  }
-}
-
 
 
 void
 Client::ClientImpl::send(std::string message) {
-  if (isClosed() || message.empty()) {
+  if (closed || message.empty()) {
     return;
   }
-
-  if (!outgoing.try_send(boost::system::error_code{}, std::move(message))) {
-    reportError("Send buffer full");
-  }
-}
-
-
-std::deque<std::string>
-Client::ClientImpl::receive() {
-  return std::exchange(incoming, std::deque<std::string>{});
+  outbound.push_back(std::move(message));
+  wakeTimer.cancel_one();
 }
 
 

@@ -1,34 +1,51 @@
-cmake_minimum_required(VERSION 3.24)
-project(WebSocketNetworking)
+cmake_minimum_required(VERSION 3.28...4.2)
+project(WebSocketNetworking
+  VERSION 0.4
+  DESCRIPTION "Simple single threaded websocket networking"
+  LANGUAGES CXX)
 
-set(PACKAGE_NAME WebSocketNetworking)
-set(PACKAGE_VERSION 0.4)
-set(PACKAGE_STRING "${PACKAGE_NAME} ${PACKAGE_VERSION}")
-set(PACKAGE_BUGREPORT "wsumner@sfu.ca")
-
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fno-rtti")
-
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
-
-if (CMAKE_SYSTEM_NAME STREQUAL Emscripten)
-  set(NETWORKING_EMSCRIPTEN_BUILD ON)
-  set(CMAKE_CXX_FLAGS_DEBUG
-      "-O0 -g -fno-omit-frame-pointer"
-  )
-else()
-  set(NETWORKING_EMSCRIPTEN_BUILD OFF)
-  set(CMAKE_CXX_FLAGS_DEBUG
-      "-O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer"
-  )
+if(PROJECT_IS_TOP_LEVEL)
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
+  set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
+  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 endif()
 
-option(ENABLE_FLUTTER_CLIENT "Build the Flutter client" ON)
-option(ENABLE_FTXUI_CLIENT   "Build the FTXUI client" ON)
-option(ENABLE_NCURSES_CLIENT "Build the NCurses client" ON)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  set(NETWORKING_EMSCRIPTEN_BUILD ON)
+else()
+  set(NETWORKING_EMSCRIPTEN_BUILD OFF)
+endif()
+
+option(NETWORKING_BUILD_TOOLS    "Build the demo server and clients" ${PROJECT_IS_TOP_LEVEL})
+option(NETWORKING_CLIENT_FLUTTER "Build the Flutter client" OFF)
+option(NETWORKING_CLIENT_FTXUI   "Build the FTXUI client" OFF)
+option(NETWORKING_CLIENT_NCURSES "Build the NCurses client" ON)
+option(NETWORKING_BUILD_TESTS    "Build the networking library tests" OFF)
+option(NETWORKING_INSTALL        "Configure networking library installation" ${PROJECT_IS_TOP_LEVEL})
+
+option(NETWORKING_ENABLE_SANITIZERS "Build with AddressSanitizer and UBSan" OFF)
+option(NETWORKING_NO_RTTI           "Build without C++ RTTI" OFF)
+
+if(NETWORKING_ENABLE_SANITIZERS AND NETWORKING_EMSCRIPTEN_BUILD)
+  message(FATAL_ERROR "NETWORKING_ENABLE_SANITIZERS is not supported for Emscripten")
+endif()
+if(NETWORKING_ENABLE_SANITIZERS
+    AND NOT CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+  message(FATAL_ERROR
+    "NETWORKING_ENABLE_SANITIZERS requires GCC or Clang. "
+    "${CMAKE_CXX_COMPILER_ID} is not supported.")
+endif()
+
+include(cmake/NetworkingCompileOptions.cmake)
 
 add_subdirectory(lib)
-add_subdirectory(tools)
 
+if(NETWORKING_BUILD_TOOLS)
+  add_subdirectory(tools)
+endif()
+
+if(NETWORKING_BUILD_TESTS AND NOT NETWORKING_EMSCRIPTEN_BUILD)
+  enable_testing()
+  add_subdirectory(test)
+endif()

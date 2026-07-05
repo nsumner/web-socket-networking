@@ -99,6 +99,9 @@ public:
    *
    *  The httpMessage is a string containing HTML content that will be sent
    *  in response to standard HTTP requests for any path ending in `index.html`.
+   *
+   *  Passing 0 as the port asks the operating system to choose any free port.
+   *  Use getPort() afterwards to discover which one was actually bound.
    */
   template <typename C, typename D>
   Server(unsigned short port,
@@ -108,6 +111,13 @@ public:
     : connectionHandler{std::make_unique<ConnectionHandlerImpl<C,D>>(onConnect, onDisconnect)},
       impl{buildImpl(*this, port, std::move(httpMessage))}
       { }
+
+  /**
+   *  Returns the port the Server is actually listening on. When the Server was
+   *  constructed with port 0, this is the concrete port the operating system
+   *  assigned; otherwise it echoes the requested port.
+   */
+  [[nodiscard]] unsigned short getPort() const;
 
   /**
    *  Perform all pending sends and receives. This function can throw an

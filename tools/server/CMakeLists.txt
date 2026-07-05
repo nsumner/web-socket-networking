@@ -1,23 +1,18 @@
-
 add_executable(chatserver
   chatserver.cpp
 )
-
-target_compile_features(chatserver PUBLIC cxx_std_23)
-set_target_properties(chatserver
-  PROPERTIES
-    LINKER_LANGUAGE CXX
-    PREFIX ""
-)
+target_compile_features(chatserver PRIVATE cxx_std_23)
+networking_apply_options(chatserver)
 
 find_package(Threads REQUIRED)
 
 target_link_libraries(chatserver
-  networking
-  ${CMAKE_THREAD_LIBS_INIT}
+  PRIVATE
+    WebSocketNetworking::networking
+    Threads::Threads
 )
 
+include(GNUInstallDirs)
 install(TARGETS chatserver
-  RUNTIME DESTINATION bin
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-

@@ -1,0 +1,57 @@
+{
+  "version": 8,
+  "configurePresets": [
+    {
+      "name": "debug",
+      "displayName": "Development and debugging",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "NETWORKING_BUILD_TESTS": "ON",
+        "NETWORKING_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "debug-ninja",
+      "displayName": "Development with Ninja",
+      "inherits": "debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/debug-ninja"
+    },
+    {
+      "name": "release-ninja",
+      "displayName": "Release with Ninja",
+      "inherits": "release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release-ninja"
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "debug-ninja", "configurePreset": "debug-ninja" },
+    { "name": "release-ninja", "configurePreset": "release-ninja" }
+  ],
+  "testPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": { "outputOnFailure": true },
+      "execution": { "jobs": 0 }
+    },
+    {
+      "name": "debug-ninja",
+      "configurePreset": "debug-ninja",
+      "output": { "outputOnFailure": true },
+      "execution": { "jobs": 0 }
+    }
+  ]
+}

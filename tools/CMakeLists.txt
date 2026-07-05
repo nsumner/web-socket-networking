@@ -1,17 +1,16 @@
-
-if (NETWORKING_EMSCRIPTEN_BUILD)
-  message("Skipping server and NCurses client under emscripten build.")
+if(NETWORKING_EMSCRIPTEN_BUILD)
+  message(STATUS "Skipping server and NCurses client under emscripten build.")
 else()
   add_subdirectory(server)
-  if (ENABLE_NCURSES_CLIENT)
+  if(NETWORKING_CLIENT_NCURSES)
     add_subdirectory(client-ncurses)
   endif()
 endif()
 
-if (ENABLE_FLUTTER_CLIENT)
+if(NETWORKING_CLIENT_FLUTTER)
   add_subdirectory(client_flutter)
 endif()
 
-if (ENABLE_FTXUI_CLIENT)
+if(NETWORKING_CLIENT_FTXUI)
   add_subdirectory(client-ftxui)
 endif()

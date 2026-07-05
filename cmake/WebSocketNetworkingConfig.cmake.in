@@ -1,0 +1,15 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Which dependency the static library recorded as $<LINK_ONLY:> depends on how
+# it was built, so this is baked in at configure time. A native build links
+# Boost::headers and the target must exist in the consumer's context. An
+# Emscripten build links the websocket.js instead and does not need Boost.
+if(NOT "@NETWORKING_EMSCRIPTEN_BUILD@")
+  find_dependency(Boost 1.83 CONFIG)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/WebSocketNetworkingTargets.cmake")
+
+check_required_components(WebSocketNetworking)

@@ -25,11 +25,11 @@ In addition, a simple chat server is provided as well as multiple clients using
 
 This project requires:
 
-1. C++17 or newer
-2. Boost >= 1.72
+1. C++23 or newer
+2. Boost >= 1.83
 3. CMake >= 3.24
 4. NCurses (only tested with 6.1) [Optional]
-5. FTXUI >= 5.0 [Optional]
+5. FTXUI >= 6.1.9 [Optional]
 6. Flutter >= 3.0 [Optional]
 
 
@@ -59,8 +59,14 @@ This produces chat server and client tools called `bin/chatserver` and
 `bin/client-ncurses` respectively. The library for single threaded clients and
 servers is built in `lib/`.
 
-Note, building with a tool like ninja can be done by adding `-G Ninja` to
-the cmake invocation and running `ninja` instead of `make`.
+Note, building with a tool like ninja can be done by adding `-G Ninja` to the
+cmake invocation and running `ninja` instead of `make`.
+
+Presets for debug and release builds in `build/` are also provided:
+
+    cmake --preset <debug|release|debug-ninja|release-ninja>
+    cmake --build --preset <debug|release|debug-ninja|release-ninja>
+    ctest --preset <debug|release|debug-ninja|release-ninja>
 
 
 ## Running the Example Chat Client and Chat Server
@@ -133,6 +139,21 @@ Building is similar to a normal CMake process:
 
 Running the client requires starting a simple web server.
 
-        cd bin/
-        ./run_webassembly.py
+    cd bin/
+    ./run_webassembly.py
+
+
+## Using the library from another project
+
+You can use the library reasonably in a CMake project with `FetchContent_*()`,
+by vendoring into your project yourself, or by installing the library.
+
+You can pull the latest version of the library into a project using
+`FetchContent_*()` in your `CMakeLists.txt`, e.g.:
+
+    FetchContent_Declare(WebSocketNetworking
+      GIT_REPOSITORY git@github.com:nsumner/web-socket-networking.git
+      GIT_TAG v0.4)
+    FetchContent_MakeAvailable(WebSocketNetworking)
+    target_link_libraries(app PRIVATE WebSocketNetworking::networking)
 
